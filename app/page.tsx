@@ -92,10 +92,45 @@ export default function Dashboard() {
   const [folderLoading, setFolderLoading] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<MoodleEvent | null>(null);
 
-  // Persist to localStorage
-  useEffect(() => { localStorage.setItem("alex_events", JSON.stringify(moodleEvents)); }, [moodleEvents]);
-  useEffect(() => { localStorage.setItem("alex_pending", JSON.stringify(pendingReview)); }, [pendingReview]);
-  useEffect(() => { localStorage.setItem("alex_completed", JSON.stringify([...completed])); }, [completed]);
+  // Persist to localStorage (local cache) + KV (server sync)
+  useEffect(() => {
+    localStorage.setItem("alex_events", JSON.stringify(moodleEvents));
+    // Sync to server in background
+    fetch("/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ events: moodleEvents }),
+    }).catch(() => {});
+  }, [moodleEvents]);
+
+  useEffect(() => {
+    localStorage.setItem("alex_pending", JSON.stringify(pendingReview));
+  }, [pendingReview]);
+
+  useEffect(() => {
+    localStorage.setItem("alex_completed", JSON.stringify([...completed]));
+    fetch("/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ completed: [...completed] }),
+    }).catch(() => {});
+  }, [completed]);
+
+  // On load: if localStorage is empty, pull from KV
+  useEffect(() => {
+    if (moodleEvents.length === 0) {
+      fetch("/api/data").then(r => r.json()).then(data => {
+        if (data.events?.length > 0) {
+          setMoodleEvents(data.events);
+          localStorage.setItem("alex_events", JSON.stringify(data.events));
+        }
+        if (data.completed?.length > 0) {
+          setCompleted(new Set(data.completed));
+          localStorage.setItem("alex_completed", JSON.stringify(data.completed));
+        }
+      }).catch(() => {});
+    }
+  }, []);
 
   useEffect(() => { if (session) fetchCalendar(); }, [session]);
 
